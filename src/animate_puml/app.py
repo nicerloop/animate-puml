@@ -48,7 +48,7 @@ class GenerateFrames(WorkflowBase):
         new_text = extracted_text
         for idx, _ in enumerate(extracted_text.splitlines()):
             new_text = self.replace_once(new_text, r"\[\$disabled_arrow]", "[$enabled_arrow]")
-            new_text = self.replace_once(new_text, r"\$disabled", f"$enabled {idx+1}:")
+            new_text = self.replace_once(new_text, r"\$disabled", f"$enabled")
             yield new_text
 
     def execute(self) -> dict:
