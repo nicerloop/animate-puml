@@ -14,6 +14,7 @@ from typing import Any
 from PIL import Image  # type: ignore
 from py_executable_checklist.workflow import WorkflowBase, run_command, run_workflow
 from pygifsicle import optimize  # type: ignore
+import shutil
 
 from animate_puml import setup_logging
 
@@ -80,6 +81,8 @@ class GenerateImageForFrames(WorkflowBase):
     frames: list[str]
     plantuml_file_path: Path
     debug: bool
+    output_file_path: Path
+
 
     def execute(self) -> dict:
         output_dir = self.plantuml_file_path.parent
@@ -90,8 +93,11 @@ class GenerateImageForFrames(WorkflowBase):
         for idx, frame in enumerate(self.frames):
             target_file = output_dir.joinpath(f"{output_file_prefix}-{idx}.puml")
             target_file.write_text(frame)
-            run_command(f"plantuml -tpng {target_file}")
-            image_file_paths.append(target_file.with_suffix(".png"))
+            ext = self.output_file_path.suffix.replace(".","")
+            if (ext == "gif"):
+                ext = "png"
+            run_command(f"plantuml -t{ext} {target_file}")
+            image_file_paths.append(target_file.with_suffix(f".{ext}"))
             if not self.debug:
                 target_file.unlink()
 
@@ -123,18 +129,29 @@ class CombineFramesIntoVideo(WorkflowBase):
         return new_image
 
     def execute(self) -> dict:
-        target_animated_gif = self.output_dir / f"{self.output_file_prefix}.gif"
+        ext = self.output_file_path.suffix.replace(".","")
+        target_animated_gif = self.output_dir / f"{self.output_file_prefix}.{ext}"
         target_compressed_animated_gif = self.output_file_path
-        img, *imgs = (self.padded_image(Image.open(f)) for f in self.image_file_paths)
-        img.save(
-            fp=target_animated_gif.as_posix(),
-            format="GIF",
-            append_images=imgs,
-            save_all=True,
-            duration=self.frame_duration,
-            loop=0,
-        )
-        optimize(target_animated_gif, target_compressed_animated_gif)
+        if (ext == "gif"):
+            img, *imgs = (self.padded_image(Image.open(f)) for f in self.image_file_paths)
+            img.save(
+                fp=target_animated_gif.as_posix(),
+                format="GIF",
+                append_images=imgs,
+                save_all=True,
+                duration=self.frame_duration,
+                loop=0,
+            )
+            optimize(target_animated_gif, target_compressed_animated_gif)
+        elif (ext == "svg"):
+            delay_in_seconds = self.frame_duration / 1000
+            cmd = f"svgasm -d 1 -o {target_animated_gif} -c 'cat \"%s\"' "
+            for f in self.image_file_paths:
+                cmd += f" {f}"
+            run_command(cmd)
+            shutil.copyfile(target_animated_gif, target_compressed_animated_gif)
+        else:
+            raise Exception(f"Unsupported animated image type: {ext}")
         return {
             "target_animated_gif": target_animated_gif,
             "animated_gif_file_path": target_compressed_animated_gif.as_posix(),
